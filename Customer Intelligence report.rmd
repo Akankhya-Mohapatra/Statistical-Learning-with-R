@@ -1,0 +1,188 @@
+---
+title: "Cluster Analysis of Customer Retention data at Telc"
+author: "Akankhya Mohapatra"
+date: "11/12/2020"
+output:
+  html_document: default
+  pdf_document: default
+  word_document: default
+fontsize: 9
+geometry: margin=1in
+---
+
+```{r initiate, include=FALSE, echo=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+
+```{r import, include=FALSE,echo=FALSE}
+library(tidyverse)
+library(stats) 
+library(factoextra)
+library(dbplyr)
+library(ggplot2)
+library(knitr)
+```
+
+## Customer Retention Analysis through clustering
+
+With increasing demands in Telecom sector, Telc has been organizing annual dinner event as part of its customer retention program. This dinner event is expected to increase sense of loyalty in customers and also likely to disclose information about clients which will be proven beneficial for improving services in future.
+
+With a huge customer base, targeting individual customers would be tedious. This is where clustering can be useful. We will be making use of clustering analysis and utilize the obtained knowledge to suggest actions to be undertaken. This will not just yield in retaining the current customers, also expand the customer base by engaging potential customers.
+
+We initiate with importing and sub setting randomly 10000 customers and exclude the features not being taken into consideration. We begin with exploring through plots.
+
+
+```{r importing and data exploration by plot, include=FALSE}
+data=read.csv("train_student.csv")
+data<-data[,-c(1,2,5,22:24,34,35,37)]
+data$ClientID<-seq.int(nrow(data))
+
+set.seed(500)
+data_subset<-data[1:25,]
+
+plot(data_subset$total_text_consumption~data_subset$phone_balance,data_subset)
+with(data_subset,text(data_subset$total_text_consumption~data_subset$phone_balance,labels=data_subset$plan_type,pos=4,cex=.6,col="blue"))
+
+plot(data_subset$total_voice_consumption~data_subset$phone_balance,data_subset)
+with(data_subset,text(data_subset$total_voice_consumption~data_subset$phone_balance,labels=data_subset$plan_type,pos=4,cex=.6))
+
+```
+
+```{r text scatter plot, include=TRUE, echo=TRUE}
+plot(data_subset$total_data_consumption~data_subset$phone_balance,data_subset)
+with(data_subset,text(data_subset$total_data_consumption~data_subset$phone_balance,labels=data_subset$plan_type,pos=4,cex=.6,col="red"))
+```
+
+## Scaling
+
+The initial plots revealed that majority of customers utilizing text, data or voice services prefer using a rented phone rather than buying. This is one of our focus of analysis to improve the sale of phone under “buy” plan type category.
+
+Before proceeding with clustering, we normalize the data. We will not be considering categorical features for scaling for the sake of preserving the information.
+
+```{r subsetting, include=FALSE, echo=FALSE}
+set.seed(99)
+data_org<-data[1:10000,]
+```
+
+
+```{r subsetting and scaling, include=FALSE, echo=FALSE}
+set.seed(302)
+data_sub<-data[1:10000,]
+
+data_sub<-data[,-c(2,23,24,25,27,28,29)] #removing columns not considered for clustering analysis
+m<-apply(data_sub,2,mean)
+s<-apply(data_sub,2,sd)
+data_sub<-scale(data_sub,m,s)
+```
+
+We select the three predictors for clustering - total data consumption, total text consumption and total voice consumption. This will be the basis of clustering and would ascertain the proportion of clients who use data or text or voice or a combination. This would allow us a glance at our clients’ choice of service usage.
+
+```{r selecting predictors, include=FALSE, echo=FALSE}
+data_sub<-data_sub[,c(8:10)]
+colnames(data_sub)<-c("data","text","voice")
+```
+
+## clustering
+
+The clustering method undertaken is non hierarchical using K-means which explains 59% of variance in the cluster. This helps to understand any discrepancy between the clustered data and the actual data by the factors taken for clustering. 
+
+In this particular sample clustering, cluster 2 has the lowest churning rate on average in comparison to other two clusters. Therefore, a peak at each cluster content would be more insightful. The centers of cluster reveal cluster 1 clients could be working from remote location hence data and text messages are used more while cluster 2 represents the clients who use more voice services. Cluster 3 clients use data and therefore could again be working individuals from remote locations or who spend more time surfing online.
+
+
+```{r estimating no of clusters and clustering, include=FALSE, echo=FALSE}
+set.seed(200)
+KM=kmeans(data_sub,3) 
+KM$centers
+```
+
+
+## plotting obtained cluster
+
+The clustered data is plotted into three separate clusters with no overlapping. 
+
+```{r plotting, include=TRUE, echo=TRUE}
+plt <- fviz_cluster(KM, geom = "point", data = data_sub) + ggtitle("k = 3")
+plt
+```
+
+## Determining different customers in each cluster
+
+This table would be convinient for when we would like to consider on a case by case basis. 
+
+```{r add column, include=FALSE, echo=FALSE}
+data_org$KM$cluster<-KM$cluster
+```
+
+
+```{r creating table, include=FALSE, echo=FALSE, eval=FALSE}
+custid<-data.frame(data_org_1$ClientID,data_org_1$churn_in_12,data_org_1$`KM$cluster`)
+colnames(custid)<-c("ClientID","churn_in_12","KM$cluster")
+
+x<-data.frame(custid[KM$cluster == 1,]) #customers with cluster 1
+y<-data.frame(custid[KM$cluster == 2,]) #customers with cluster 2
+z<-data.frame(custid[KM$cluster == 3,]) #customers with cluster 3
+```
+
+## Customer segmentation through aggeration of data by mean
+
+Basis the plot, it can be deduced that majority of Telc’s clients use text over voice and data on an average.
+
+![customer segmentation](cust seg.jpeg)
+
+
+## Deducing relation with other features using clusters
+
+In terms of woman clients, all clusters have similar proportion of women. cluster 2 has clients with higher average age and proportion of women but possess the most inexpensive rental phones among all the clusters comparatively.
+
+cluster 1, on the other hand, has clients who have invested the highest amount in rental phones on average.
+
+
+```{r creating table 2, include=FALSE, echo=FALSE,eval=FALSE}
+#separating categorical variables into separate column
+data_org$Woman<-ifelse(data_org$gender=="Woman",1,0)
+data_org$Man<-ifelse(data_org$gender=="Man",1,0)
+
+data_org$bring<-ifelse(data_org$plan_type=="bring",1,0)
+data_org$buy<-ifelse(data_org$plan_type=="buy",1,0)
+data_org$rent<-ifelse(data_org$plan_type=="rent",1,0)
+```
+
+```{r summarising mean, include=TRUE, echo=FALSE, eval=FALSE}
+data_merge<-data_org%>%
+  select(Woman,phone_price,age,rent) %>%
+  group_by(data_org$`KM$cluster`) %>%
+  summarise_all(mean)
+data_merge
+```
+
+## Estimating proportion of women investing in monthly plans and phones
+
+Cluster 1 spends the highest on plan and phone on a monthly basis, followed by cluster 3. Cluster 2 consists of clients with lowest expenditure on plans and phones.
+
+```{r table and plot, Include=TRUE, echo=FALSE,eval=FALSE}
+Rate=data_org%>%
+  select(base_monthly_rate_phone,base_monthly_rate_plan) %>%
+  group_by(data_org$`KM$cluster`) %>%
+  summarise_all(mean)
+Rate
+```
+
+## Plotting horizontal bar graph of monthly investments by clients
+
+The analysis indicates that between the monthly rate plan and monthly phone plan (since all 3 clusters have similar proportion of men and women and therefore can be used interchangeably in this instance),women clients prefer investing more in monthly plan rate than monthly phone rate. 
+
+![Monthly Investments](monthly rate plot.jpeg)
+
+# ACTIONABLE SUGGESTIONS
+
+1.	In terms of services, clients prefer text service to data and voice services. Special offers from time to time to loyal customers could be essential to their retention.
+
+2.	The phone prices are relevant to our findings indicating that the highest average investment in monthly phone rate and plans is made by cluster 1 clients - who are around 34-36 years old on average. Therefore, clients of similar age group could be targeted to invest in the same.
+
+3.	Better choices in various plans for usage could prove beneficial for business to retain maximum customers - such as cheaper phone prices of plan type - “buy”. This could boost the sale of phones rather than sale of rental phones that Telc offers and would enhance the overall image of Telc as a mobile distributor along with being an established mobile telecom company. This would open avenues to diversification in business.
+
+With more information, we could focus on analyzing profit earned in each investment made by the client in various Telc services. 
+
+
+
